@@ -28,6 +28,14 @@ class BinanceWrapper:
             if any(s in msg for s in ["timeout", "too many requests", "connection", "temporarily"]):
                 raise TransientError(e)
             raise
+    def _decimals_from_step(s: str) -> int:
+        d = Decimal(str(s)).normalize()
+        return -d.as_tuple().exponent if d.as_tuple().exponent < 0 else 0
+
+    def _fmt_dec(x, places: int) -> str:
+        q = Decimal(str(x)).quantize(Decimal(1).scaleb(-places), rounding=ROUND_DOWN)
+        return format(q, 'f')  # evita 'e-05'
+        
     def validate_api(self) -> (bool, str):
         """Tenta um endpoint assinado p/ validar chave/permissões."""
         try:
@@ -116,17 +124,27 @@ class BinanceWrapper:
     def quantize_tick(self, price: Decimal, tick: Decimal) -> Decimal:
         return (price // tick) * tick
 
-    def order_limit_maker(self, symbol: str, side: str, quantity: float, price: float, client_order_id: Optional[str] = None):
-        params = {
-            "symbol": symbol,
-            "side": side,
-            "type": ORDER_TYPE_LIMIT_MAKER,
-            "quantity": quantity,
-            "price": f"{price:.8f}"
-        }
+    def order_limit_maker(self, symbol, side, quantity, price, client_order_id=None):
+        # pega precisões do símbolo
+        f = self.get_symbol_filters(symbol)  # seu wrapper já tem isso
+        q_places = _decimals_from_step(f["step_size"])
+        p_places = _decimals_from_step(f["tick_size"])
+
+        qty_str = _fmt_dec(quantity, q_places)
+        price_str = _fmt_dec(price, p_places)
+
+        params = dict(
+            symbol=symbol,
+            side=side,
+            type="LIMIT_MAKER",
+            timeInForce="GTC",
+            quantity=qty_str,
+            price=price_str,
+        )
         if client_order_id:
             params["newClientOrderId"] = client_order_id
         return self._safe_call(self.client.create_order, **params)
+
 
     def order_market(self, symbol: str, side: str, quantity: float, client_order_id: Optional[str] = None):
         params = {
