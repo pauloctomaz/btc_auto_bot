@@ -49,6 +49,7 @@ class AppCfg(BaseModel):
 
 def load_config(config_path: str = "config.json") -> AppCfg:
     load_dotenv(override=True)
+    config_path = config_path or os.getenv("CONFIG_PATH", "config.json")
     if not os.path.exists(config_path):
         raise FileNotFoundError("Crie config.json a partir de config.json.example")
     with open(config_path, "r", encoding="utf-8") as f:
