@@ -40,6 +40,7 @@ def trades_needed_compound(current: float, target: float, net_rate: float) -> in
 def main():
     cfg = load_config()
     api_key, api_secret = load_secrets()
+    
     # ---- Diagnóstico inicial (antes de chamar qualquer endpoint assinado) ----
     ipv4, ipv6 = _public_ips()
     print("=== Startup diagnostics ===")
@@ -59,6 +60,8 @@ def main():
         return
     print("[Diag] Binance API OK")
     # ---- Fim diagnóstico ----
+    
+
     ex = BinanceWrapper(api_key, api_secret, use_testnet=cfg.use_testnet)
     filters = ex.get_symbol_filters(cfg.symbol)
     fees = ex.get_trade_fees(cfg.symbol)  # {'maker': x, 'taker': y}

@@ -3,6 +3,8 @@ from binance.enums import *
 from decimal import Decimal
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 from typing import Optional
+from binance.exceptions import BinanceAPIException
+
 
 class TransientError(Exception):
     pass
@@ -26,6 +28,27 @@ class BinanceWrapper:
             if any(s in msg for s in ["timeout", "too many requests", "connection", "temporarily"]):
                 raise TransientError(e)
             raise
+    def validate_api(self) -> (bool, str):
+        """Tenta um endpoint assinado p/ validar chave/permissões."""
+        try:
+            _ = self._safe_call(self.client.get_account)
+            return True, ""
+        except BinanceAPIException as e:
+            code = getattr(e, "code", None)
+            msg = str(e)
+            if code == -2015 or "invalid api-key" in msg.lower():
+                return False, (
+                    "API inválida/IP/permissões.\n"
+                    "1) Se use_testnet=True, use CHAVES do Testnet.\n"
+                    "2) Em produção, habilite 'Enable Spot & Margin Trading'.\n"
+                    "3) Se whitelistar IP, inclua o IP do container.\n"
+                    "4) KEY/SECRET no .env sem aspas/espaços."
+                )
+            if code == -1021 or "timestamp" in msg.lower():
+                return False, "Relógio do servidor fora de sincronia (-1021). Sincronize NTP."
+            return False, f"Erro Binance: {code} - {msg}"
+        except Exception as e:
+            return False, f"Falha ao validar API: {e}"
 
     # ---------- market data ----------
     def get_price(self, symbol: str) -> float:
