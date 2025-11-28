@@ -90,19 +90,37 @@ class BinanceWrapper:
     def get_symbol_filters(self, symbol: str):
         if symbol in self._filters_cache:
             return self._filters_cache[symbol]
+
         info = self.get_symbol_info_raw(symbol)
         filters = {f["filterType"]: f for f in info["filters"]}
+
         lot = filters.get("LOT_SIZE", {})
-        notional = filters.get("MIN_NOTIONAL", {})
         price_filter = filters.get("PRICE_FILTER", {})
+
+        # pega o maior minNotional entre MIN_NOTIONAL e NOTIONAL (alguns símbolos usam um, outros outro)
+        min_notional = Decimal("0")
+        if "MIN_NOTIONAL" in filters:
+            mn = filters["MIN_NOTIONAL"].get("minNotional")
+            if mn is not None:
+                min_notional = max(min_notional, Decimal(str(mn)))
+        if "NOTIONAL" in filters:
+            mn = filters["NOTIONAL"].get("minNotional")
+            if mn is not None:
+                min_notional = max(min_notional, Decimal(str(mn)))
+        if min_notional == 0:
+            # fallback conservador
+            min_notional = Decimal("5")
+
         res = {
             "min_qty": Decimal(lot.get("minQty", "0.00000001")),
             "step_size": Decimal(lot.get("stepSize", "0.00000001")),
-            "min_notional": Decimal(notional.get("minNotional", "5")),
-            "tick_size": Decimal(price_filter.get("tickSize", "0.01"))
+            "min_notional": min_notional,
+            "tick_size": Decimal(price_filter.get("tickSize", "0.01")),
         }
+
         self._filters_cache[symbol] = res
         return res
+
 
     def get_trade_fees(self, symbol: str):
         if symbol in self._fees_cache:
