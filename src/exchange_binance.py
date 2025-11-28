@@ -140,7 +140,7 @@ class BinanceWrapper:
 
  # ---- envio centralizado ----
     def order_limit_maker(self, symbol: str, side: str, quantity, price, client_order_id: Optional[str] = None):
-        # converte para Decimal e aplica filtros de step/tick
+        # aplica stepSize e tickSize do símbolo
         f = self.get_symbol_filters(symbol)
         step = f["step_size"]
         tick = f["tick_size"]
@@ -148,13 +148,14 @@ class BinanceWrapper:
         qd = self.quantize_step(Decimal(str(quantity)), step)
         pd = self.quantize_tick(Decimal(str(price)), tick)
 
-        qty_str = format(qd, "f")     # ex: '0.00008' (sem notação científica)
-        price_str = format(pd, "f")   # ex: '87691.08000000'
+        qty_str = format(qd, "f")    # ex: '0.00008'
+        price_str = format(pd, "f")  # ex: '87691.08'
 
         params = {
             "symbol": symbol,
             "side": side,
-            "type": ORDER_TYPE_LIMIT_MAKER,
+            "type": ORDER_TYPE_LIMIT,          # LIMIT normal
+            "timeInForce": TIME_IN_FORCE_GTC,  # obrigatório pra LIMIT
             "quantity": qty_str,
             "price": price_str,
         }
@@ -162,6 +163,7 @@ class BinanceWrapper:
             params["newClientOrderId"] = client_order_id
 
         return self._safe_call(self.client.create_order, **params)
+
 
 
     def order_market(self, symbol: str, side: str, quantity, client_order_id: Optional[str] = None):
@@ -181,6 +183,7 @@ class BinanceWrapper:
             params["newClientOrderId"] = client_order_id
 
         return self._safe_call(self.client.create_order, **params)
+
 
 
 
