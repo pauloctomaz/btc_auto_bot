@@ -175,7 +175,7 @@ def main():
 
             # ========================
             # BUY logic (maker) + rearm
-                    # ========================
+            # ========================
         if state == "WANT_BUY" and strat.position.side == "NONE":
             free_quote = ex.get_asset_balance(cfg.quote_asset)
 
@@ -331,12 +331,6 @@ def main():
 
             time.sleep(cfg.poll_interval_seconds)
 
-        except KeyboardInterrupt:
-            print("Encerrado pelo usuário.")
-            break
-        except Exception as e:
-            print("Erro no loop:", e)
-            time.sleep(5)
 
 if __name__ == "__main__":
     main()
