@@ -215,34 +215,63 @@ def main():
             want_buy = (drop >= spacing) and (risk_frac > 0.0)
 
             if want_buy:
-                quote_to_use = free_quote * risk_frac
-                if quote_to_use >= float(filters["min_notional"]):
-                    # qty bruta pelo preço atual (vamos comprar MARKET p/ garantir execução)
-                    qty = Decimal(str(quote_to_use / price))
-                    qty = ex.quantize_step(qty, filters["step_size"])
+            # ====== Gatilho de compra por queda (GRID) ======
+                drop = (ref_price - price) / ref_price if ref_price > 0 else 0.0
+                want_buy = (drop >= spacing) and (risk_frac > 0.0)
 
-                    if qty >= filters["min_qty"] and qty * Decimal(str(price)) >= filters["min_notional"]:
-                        # ---- BUY MARKET (simples/certeiro p/ capital baixo) ----
-                        od = ex.order_market(cfg.symbol, "BUY", float(qty))
-                        fill_price = price   # aproximação
-                        fill_qty = float(qty)
+                if want_buy:
+                    quote_to_use = free_quote * risk_frac
+                    min_notional = float(filters["min_notional"])
 
-                        # cria lote e arma SELL (TP líquido cfg)
-                       # cria/mescla lote e tenta armar SELL
-                        sell_target, eff_tp = calc_sell_target(ex, cfg, fill_price)
-                        from src.db import upsert_accum_lot
-                        lot_id, new_bp, new_qty = upsert_accum_lot(float(fill_price), float(fill_qty), float(sell_target))
-                        ok, msg = try_arm_sell_for_lot(ex, cfg, filters, lot_id, float(new_qty), float(sell_target))
-                        if ok:
-                            print(f"[BUY] qty={format(qty,'f')} @~{fill_price:.2f} → [LOT#{lot_id}] SELL alvo {sell_target:.2f}")
+                    # se o valor calculado for menor que o mínimo, mas você tiver saldo,
+                    # força usar exatamente o mínimo (ex.: 5 USDT)
+                    if quote_to_use < min_notional and free_quote >= min_notional:
+                        print(f"[BUY-ADJUST] quote_to_use {quote_to_use:.2f} < minNotional {min_notional:.2f} → usando min_notional")
+                        quote_to_use = min_notional
+
+                    if quote_to_use >= min_notional:
+                        # qty bruta pelo preço atual (vamos comprar MARKET p/ garantir execução)
+                        qty = Decimal(str(quote_to_use / price))
+                        qty = ex.quantize_step(qty, filters["step_size"])
+
+                        if qty >= filters["min_qty"] and qty * Decimal(str(price)) >= filters["min_notional"]:
+                            # ---- BUY MARKET (simples/certeiro p/ capital baixo) ----
+                            od = ex.order_market(cfg.symbol, "BUY", float(qty))
+                            fill_price = price   # aproximação
+                            fill_qty = float(qty)
+
+                            # cria/mescla lote e tenta armar SELL
+                            sell_target, eff_tp = calc_sell_target(ex, cfg, fill_price)
+                            from src.db import upsert_accum_lot
+                            lot_id, new_bp, new_qty = upsert_accum_lot(
+                                float(fill_price), float(fill_qty), float(sell_target)
+                            )
+                            ok, msg = try_arm_sell_for_lot(
+                                ex, cfg, filters, lot_id, float(new_qty), float(sell_target)
+                            )
+                            if ok:
+                                print(
+                                    f"[BUY] qty={format(qty,'f')} @~{fill_price:.2f} → "
+                                    f"[LOT#{lot_id}] SELL alvo {sell_target:.2f}"
+                                )
+                            else:
+                                print(
+                                    f"[BUY] qty={format(qty,'f')} @~{fill_price:.2f} → "
+                                    f"[LOT#{lot_id}] aguardando mínimo p/ SELL ({msg})"
+                                )
+                            # atualiza referência após compra para evitar avalanche
+                            ref_price = price
                         else:
-                            print(f"[BUY] qty={format(qty,'f')} @~{fill_price:.2f} → [LOT#{lot_id}] aguardando mínimo p/ SELL ({msg})")
-                        # atualiza referência após compra para evitar avalanche
-                        ref_price = price
+                            print(
+                                f"[BUY-SKIP] qty*price < minNotional "
+                                f"(qty={format(qty,'f')}, price={price:.2f})"
+                            )
                     else:
-                        print(f"[BUY-SKIP] qty*price < minNotional (qty={format(qty,'f')}, price={price:.2f})")
-                else:
-                    print(f"[BUY-SKIP] quote_to_use < minNotional ({quote_to_use:.2f} < {float(filters['min_notional']):.2f})")
+                        print(
+                            f"[BUY-SKIP] quote_to_use < minNotional "
+                            f"({quote_to_use:.2f} < {min_notional:.2f})"
+                        )
+
 
             # log curto
             lots_open = len(get_open_lots())
