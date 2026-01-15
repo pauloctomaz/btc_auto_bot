@@ -1,12 +1,15 @@
 from binance.client import Client
 from binance.exceptions import BinanceAPIException
-from decimal import Decimal, ROUND_DOWN
+from decimal import Decimal, ROUND_DOWN, ROUND_UP
 import secrets
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
 from typing import Optional, Tuple, Dict, Any
 import time
 
 class TransientError(Exception):
+    pass
+
+class MakerWouldBeTaker(Exception):
     pass
 
 class BinanceWrapper:
@@ -143,6 +146,22 @@ class BinanceWrapper:
     def quantize_tick(self, price: Decimal, tick: Decimal) -> Decimal:
         return (price // tick) * tick
 
+    def quantize_step_floor(self, value: Decimal, step: Decimal) -> Decimal:
+        return (value // step) * step
+
+    def quantize_step_ceil(self, value: Decimal, step: Decimal) -> Decimal:
+        if step == 0:
+            return value
+        return (value / step).to_integral_value(rounding=ROUND_UP) * step
+
+    def quantize_tick_floor(self, price: Decimal, tick: Decimal) -> Decimal:
+        return (price // tick) * tick
+
+    def quantize_tick_ceil(self, price: Decimal, tick: Decimal) -> Decimal:
+        if tick == 0:
+            return price
+        return (price / tick).to_integral_value(rounding=ROUND_UP) * tick
+
     def order_limit_maker(
         self,
         symbol: str,
@@ -181,7 +200,7 @@ class BinanceWrapper:
             # -2010: ordem viraria taker → apenas rearmar no loop
             if getattr(e, "code", None) == -2010:
                 print("[Maker] Rejeitado: viraria taker. Rearma no próximo ciclo.")
-                return {}
+                raise MakerWouldBeTaker()
             raise
 
     def order_market(

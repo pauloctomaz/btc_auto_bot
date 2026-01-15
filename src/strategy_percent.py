@@ -40,31 +40,30 @@ class PercentStrategy:
         if self.ref_price is None:
             self.ref_price = price
 
-    def _net_profit_pct(self, pb: float, ps: float, maker_on_both=True) -> float:
+    def _net_profit_pct(self, pb: float, ps: float, maker_on_both=False) -> float:
         """
         Retorna % de lucro líquido considerando taxas.
         """
         fee_buy = self.cfg.fee_maker if maker_on_both else self.cfg.fee_taker
-        fee_sell = self.cfg.fee_maker if maker_on_both else self.cfg.fee_taker
+        fee_sell = self.cfg.fee_maker
         extra = self.cfg.extra_fee_safety_bps / 10_000.0
         buy_cost = pb * (1 + fee_buy + extra)
         sell_revenue = ps * (1 - fee_sell - extra)
         return (sell_revenue - buy_cost) / buy_cost
 
-    def target_sell_for_net(self, pb: float, net_target: float, maker_on_both=True) -> float:
+    def target_sell_for_net(self, pb: float, net_target: float, maker_on_both=False) -> float:
         fee_buy = self.cfg.fee_maker if maker_on_both else self.cfg.fee_taker
-        fee_sell = self.cfg.fee_maker if maker_on_both else self.cfg.fee_taker
+        fee_sell = self.cfg.fee_maker
         extra = self.cfg.extra_fee_safety_bps / 10_000.0
         # Queremos: (ps*(1-fee_sell-extra) - pb*(1+fee_buy+extra)) / (pb*(1+fee_buy+extra)) >= net_target
         denom = (1 - fee_sell - extra)
         base = pb * (1 + fee_buy + extra) * (1 + net_target)
         ps = base / denom
         # arredonda por tick
-        from math import floor
         tick = self.cfg.tick_size
         # usar Decimal para manter precisão
-        from decimal import Decimal
-        dps = (Decimal(str(ps)) // tick) * tick
+        from decimal import Decimal, ROUND_UP
+        dps = (Decimal(str(ps)) / tick).to_integral_value(rounding=ROUND_UP) * tick
         return float(dps)
 
     def maybe_prices(self, price: float) -> Tuple[str, str, float, float]:
@@ -86,7 +85,7 @@ class PercentStrategy:
 
         if self.position.side == "LONG":
             # calcula preço-alvo para lucro líquido >= min_profit_pct_net
-            sell_price = self.target_sell_for_net(self.position.entry_price, self.cfg.min_profit_pct_net, maker_on_both=True)
+            sell_price = self.target_sell_for_net(self.position.entry_price, self.cfg.min_profit_pct_net, maker_on_both=False)
             change_from_entry = (price - self.position.entry_price) / self.position.entry_price
             if change_from_entry >= self.cfg.max_change_pct:
                 return "WANT_SELL", f"alta {change_from_entry:.2%} desde entrada", None, sell_price
